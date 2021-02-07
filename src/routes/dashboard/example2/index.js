@@ -7,9 +7,29 @@ import { getColumns } from "./utils"
 import SetModal from "./setModal"
 import dict from "@/utils/dict"
 
-const FormItem = Form.Item;
-const Option = Select.Option;
-const confirm = Modal.confirm;
+//大写金额转换方法： 
+function DX(n) {
+    var fraction = ['角', '分'];
+    var digit = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'];
+    var unit = [['元', '万', '亿'], ['', '拾', '佰', '仟']];
+    var head = n < 0 ? '欠' : '';
+    n = Math.abs(n);
+    var s = '';
+    for (var i = 0; i < fraction.length; i++) {
+        s += (digit[Math.floor(n * 10 * Math.pow(10, i)) % 10] + fraction[i]).replace(/零./, '');
+    }
+    s = s || '整';
+    n = Math.floor(n);
+    for (var i = 0; i < unit[0].length && n > 0; i++) {
+        var p = '';
+        for (var j = 0; j < unit[1].length && n > 0; j++) {
+            p = digit[n % 10] + unit[1][j] + p;
+            n = Math.floor(n / 10);
+        }
+        s = p.replace(/(零.)*零$/, '').replace(/^$/, '零') + unit[0][i] + s;
+    }
+    return head + s.replace(/(零.)*零元/, '元').replace(/(零.)+/g, '零').replace(/^整$/, '零元整');
+}
 
 @Form.create()
 @connect(({ example2, loading }) => {
@@ -24,132 +44,71 @@ const confirm = Modal.confirm;
 })
 class Index extends PureComponent {
     constructor(props) {
-        super(props)
-        this.state = {
-            columns: getColumns(this)
-        }
-    }
-    componentDidMount = () => {
-        this.onSearch(1, 10);
-    }
-    //设置点击事件
-    setting = (record) => {
-        const { dispatch } = this.props;
-        dispatch({
-            type: "example2/save",
-            payload: {
-                setVisible: true,
-                currentData: record
-            }
-        })
-    }
-    //新增点击事件
-    addClick = () => {
-        const { dispatch } = this.props;
-        dispatch({
-            type: "example2/save",
-            payload: {
-                addVisible: true,
-                isUpdate: false,
-                currentData: {}
-            }
-        })
-    }
-    //删除事件
-    delete = (id) => {
-        const { dispatch } = this.props;
-        confirm({
-            title: '确认删除?',
-            content: '删除后将无法回退！',
-            onOk() {
-                dispatch({
-                    type: "example2/delete",
-                    payload: { id }
-                })
-            },
-            onCancel() { },
-        });
+        super();
 
+        this.state = {
+            saveMoney: '',//input框里的初始值
+            bigText: '',//大写金额
+        };
+        this.handleChangeSave = this.handleChangeSave.bind(this);
     }
-    //修改事件
-    update = (record) => {
-        const { dispatch } = this.props;
-        dispatch({
-            type: "example2/save",
-            payload: {
-                addVisible: true,
-                isUpdate: true,
-                currentData: record
+    handleChangeSave(e) {
+        //获取值并进行实时改变input框的数据显示，进行位数控制
+        const data = e.target.value; //获取输入的值
+        const num = data.replace(/,/g, '');//把输入的逗号变成空
+        const bigText = DX(num); //调用大写方法
+        var reg = /^[0-9\.\d]+$/; //正则匹配输入的是否符合规范
+        if (reg.test(num)) {
+            if (num.indexOf('.') > '-1') //判断小数点存在的情况下
+            {
+                const decimal = num.split('.')[1];
+                const wholeNumber = num.split('.')[0];
+                if (wholeNumber === '') {
+                    this.setState({
+                        saveMoney: '0' + '.' + decimal, //如果小数点前为空的话默认为0 
+                        bigText: bigText
+                    });
+                }
+                else {
+                    if (num >= 1000 && decimal.length < 3 && num.length < 16) { this.setState({ saveMoney: parseInt(num) + '.' + decimal, bigText: bigText }); }
+                    else if (num >= 0 && num < 1000 && decimal.length < 3) {
+                        this.setState({
+                            saveMoney: parseInt(num) + '.' + decimal,
+                            bigText: bigText
+                        });
+                    }
+                }
             }
-        })
-    }
-    //查询
-    onSearch = (pageNum, pageSize) => {
-        const { dispatch, form: { validateFields } } = this.props;
-        validateFields((error, values) => {
-            if (!!error) return;
-            dispatch({
-                type: "example2/findByQuery",
-                payload: { ...values, pageNum, pageSize }
-            })
-        })
-    }
-    //页码变化回调
-    onChange = ({ current: pageNum, pageSize }) => {
-        this.onSearch(pageNum, pageSize)
+            else {
+                if (num >= 0 && num.length < 13) { //判断小数点不存在的情况下
+                    console.log(num, bigText)
+                    this.setState({
+                        saveMoney: num,
+                        bigText: bigText
+                    });
+                }
+            }
+        }
+        else if (num === '') //判断为空时
+        {
+            this.setState({
+                saveMoney: '',
+                bigText: ''
+            });
+        }
+        // console.log(this.state.saveMoney, this.state.bigText)
     }
     render() {
         const { dataSource, form: { getFieldDecorator }, loading, pageNum, pageSize, totalCount } = this.props;
         const { columns } = this.state;
+        console.log(this.state.bigText)
         return (
             <Card style={{ margin: 14 }}>
-                <Form layout={"inline"}>
-                    <FormItem label="姓名">
-                        {getFieldDecorator('name')(
-                            <Input />
-                        )}
-                    </FormItem>
-                    <FormItem label="年龄">
-                        {getFieldDecorator('age')(
-                            <InputNumber style={{ width: "100%" }} />
-                        )}
-                    </FormItem>
-                    <FormItem label="人员状态">
-                        {getFieldDecorator('status')(
-                            <Select style={{ width: 172 }}>
-                                {dict["status"].map(({ value, name }) => <Option key={value} value={value}>{name}</Option>)}
-                            </Select>
-                        )}
-                    </FormItem>
-                    <FormItem label="出生日期">
-                        {getFieldDecorator('birthday')(
-                            <DatePicker />
-                        )}
-                    </FormItem>
-                    <FormItem >
-                        <Button style={{ marginRight: 14 }} onClick={() => this.onSearch(pageNum, pageSize)} icon="search" type="primary">查询</Button>
-                        <Button icon="plus" type="primary" onClick={this.addClick}>新增</Button>
-                    </FormItem>
-                </Form>
-                <div style={{ marginTop: "24px" }}>
-                    <ExhibitTable
-                        bordered
-                        columns={columns}
-                        loading={loading}
-                        dataSource={dataSource}
-                        rowKey="id"
-                        onChange={this.onChange}
-                        pagination={{
-                            current: pageNum,
-                            pageSize: pageSize,
-                            total: totalCount,
-                            showSizeChanger: true,
-                            showTotal: (total, range) => range[0] + '-' + range[1] + ' 共 ' + total + '条'
-                        }}
-                    />
-                </div>
-                <AddModal />
-                <SetModal />
+                <input type="text" id='box'
+                    value={this.state.saveMoney}
+                    onChange={this.handleChangeSave}
+                />
+                <p>{this.state.bigText}</p>
             </Card>
         )
     }
